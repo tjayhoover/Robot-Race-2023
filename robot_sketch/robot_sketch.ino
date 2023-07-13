@@ -1,27 +1,9 @@
-#include <Pololu3pi.h>
-
-#include <OrangutanLEDs.h>
-
-#include <OrangutanPushbuttons.h>
-
-#include <OrangutanMotors.h>
-
-#include <OrangutanBuzzer.h>
-
-#include <OrangutanAnalog.h>
-
-#include <PololuQTRSensors.h>
-
-#include <OrangutanMotors.h>
-
-#include <OrangutanLCD.h>
-
-#include <OrangutanResources.h>
+// Robot Race 2023 - Tyler Hoover & Peter Faben
 
 
 /*
- * 3pi-linefollower - demo code for the Pololu 3pi Robot
- *
+ * Simple3piLineFollower - demo code for the Pololu 3pi Robot
+ * 
  * This code will follow a black line on a white background, using a
  * very simple algorithm.  It demonstrates auto-calibration and use of
  * the 3pi IR sensors, motor control, bar graphs using custom
@@ -35,11 +17,23 @@
  */
 
 // The 3pi include file must be at the beginning of any program that
-// uses the Pololu AVR library and 3pi.
+// uses the Pololu AVR library and 3pi.  Pololu3pi.h includes all of the
+// other Orangutan Arduino libraries that can be used to control the
+// on-board hardware such as LCD, buzzer, and motor drivers.
+#include <Pololu3pi.h>
+#include <PololuQTRSensors.h>
+#include <OrangutanMotors.h>
+#include <OrangutanAnalog.h>
+#include <OrangutanLEDs.h>
+#include <OrangutanLCD.h>
+#include <OrangutanPushbuttons.h>
+#include <OrangutanBuzzer.h>
 
+Pololu3pi robot;
+unsigned int sensors[5]; // an array to hold sensor values
 
 // This include file allows data to be stored in program space.  The
-// ATmegaxx8 has 16x more program space than RAM, so large
+// ATmega168 has 16k of program space compared to 1k of RAM, so large
 // pieces of static data should be stored in program space.
 #include <avr/pgmspace.h>
 
@@ -59,208 +53,191 @@ const char go[] PROGMEM = "L16 cdegreg4";
 // offsets, we can generate all of the 7 extra characters needed for a
 // bargraph.  This is also stored in program space.
 const char levels[] PROGMEM = {
-    0b00000,
-    0b00000,
-    0b00000,
-    0b00000,
-    0b00000,
-    0b00000,
-    0b00000,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b11111
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111
 };
 
 // This function loads custom characters into the LCD.  Up to 8
 // characters can be loaded; we use them for 7 levels of a bar graph.
 void load_custom_characters()
 {
-    lcd_load_custom_character(levels+0,0); // no offset, e.g. one bar
-    lcd_load_custom_character(levels+1,1); // two bars
-    lcd_load_custom_character(levels+2,2); // etc...
-    lcd_load_custom_character(levels+3,3);
-    lcd_load_custom_character(levels+4,4);
-    lcd_load_custom_character(levels+5,5);
-    lcd_load_custom_character(levels+6,6);
-    clear(); // the LCD must be cleared for the characters to take effect
+  OrangutanLCD::loadCustomCharacter(levels + 0, 0); // no offset, e.g. one bar
+  OrangutanLCD::loadCustomCharacter(levels + 1, 1); // two bars
+  OrangutanLCD::loadCustomCharacter(levels + 2, 2); // etc...
+  OrangutanLCD::loadCustomCharacter(levels + 3, 3);
+  OrangutanLCD::loadCustomCharacter(levels + 4, 4);
+  OrangutanLCD::loadCustomCharacter(levels + 5, 5);
+  OrangutanLCD::loadCustomCharacter(levels + 6, 6);
+  OrangutanLCD::clear(); // the LCD must be cleared for the characters to take effect
 }
 
 // This function displays the sensor readings using a bar graph.
 void display_readings(const unsigned int *calibrated_values)
 {
-    unsigned char i;
+  unsigned char i;
 
-    for(i=0;i<5;i++) {
-        // Initialize the array of characters that we will use for the
-        // graph.  Using the space, an extra copy of the one-bar
-        // character, and character 255 (a full black box), we get 10
-        // characters in the array.
-        const char display_characters[10] = {' ',0,0,1,2,3,4,5,6,255};
+  for (i=0;i<5;i++) {
+    // Initialize the array of characters that we will use for the
+    // graph.  Using the space, an extra copy of the one-bar
+    // character, and character 255 (a full black box), we get 10
+    // characters in the array.
+    const char display_characters[10] = { ' ', 0, 0, 1, 2, 3, 4, 5, 6, (char)255 };
 
-        // The variable c will have values from 0 to 9, since
-        // calibrated values are in the range of 0 to 1000, and
-        // 1000/101 is 9 with integer math.
-        char c = display_characters[calibrated_values[i]/101];
+    // The variable c will have values from 0 to 9, since
+    // calibrated values are in the range of 0 to 1000, and
+    // 1000/101 is 9 with integer math.
+    char c = display_characters[calibrated_values[i] / 101];
 
-        // Display the bar graph character.
-        print_character(c);
-    }
+    // Display the bar graph character.
+    OrangutanLCD::print(c);
+  }
 }
 
 // Initializes the 3pi, displays a welcome message, calibrates, and
-// plays the initial music.
-void initialize()
+// plays the initial music.  This function is automatically called
+// by the Arduino framework at the start of program execution.
+void setup()
 {
-    unsigned int counter; // used as a simple timer
-    unsigned int sensors[5]; // an array to hold sensor values
+  unsigned int counter; // used as a simple timer
 
-    // This must be called at the beginning of 3pi code, to set up the
-    // sensors.  We use a value of 2000 for the timeout, which
-    // corresponds to 2000*0.4 us = 0.8 ms on our 20 MHz processor.
-    pololu_3pi_init(2000);
-    load_custom_characters(); // load the custom characters
+  // This must be called at the beginning of 3pi code, to set up the
+  // sensors.  We use a value of 2000 for the timeout, which
+  // corresponds to 2000*0.4 us = 0.8 ms on our 20 MHz processor.
+  robot.init(2000);
 
-    // Play welcome music and display a message
-    print_from_program_space(welcome_line1);
-    lcd_goto_xy(0,1);
-    print_from_program_space(welcome_line2);
-    play_from_program_space(welcome);
-    delay(1000);
+  load_custom_characters(); // load the custom characters
 
-    clear();
-    print_from_program_space(demo_name_line1);
-    lcd_goto_xy(0,1);
-    print_from_program_space(demo_name_line2);
-    delay(1000);
+  // Play welcome music and display a message
+  OrangutanLCD::printFromProgramSpace(welcome_line1);
+  OrangutanLCD::gotoXY(0, 1);
+  OrangutanLCD::printFromProgramSpace(welcome_line2);
+  OrangutanBuzzer::playFromProgramSpace(welcome);
+  delay(1000);
 
-    // Display battery voltage and wait for button press
-    while(!button_is_pressed(BUTTON_B))
-    {
-        int bat = read_battery_millivolts();
+  OrangutanLCD::clear();
+  OrangutanLCD::printFromProgramSpace(demo_name_line1);
+  OrangutanLCD::gotoXY(0, 1);
+  OrangutanLCD::printFromProgramSpace(demo_name_line2);
+  delay(1000);
 
-        clear();
-        print_long(bat);
-        print("mV");
-        lcd_goto_xy(0,1);
-        print("Press B");
+  // Display battery voltage and wait for button press
+  while (!OrangutanPushbuttons::isPressed(BUTTON_B))
+  {
+    int bat = OrangutanAnalog::readBatteryMillivolts();
 
-        delay(100);
-    }
+    OrangutanLCD::clear();
+    OrangutanLCD::print(bat);
+    OrangutanLCD::print("mV");
+    OrangutanLCD::gotoXY(0, 1);
+    OrangutanLCD::print("Press B");
 
-    // Always wait for the button to be released so that 3pi doesn't
-    // start moving until your hand is away from it.
-    wait_for_button_release(BUTTON_B);
-    delay(1000);
+    delay(100);
+  }
 
-    // Auto-calibration: turn right and left while calibrating the
-    // sensors.
-    for(counter=0;counter<80;counter++)
-    {
-        if(counter < 20 || counter >= 60)
-            set_motors(40,-40);
-        else
-            set_motors(-40,40);
+  // Always wait for the button to be released so that 3pi doesn't
+  // start moving until your hand is away from it.
+  OrangutanPushbuttons::waitForRelease(BUTTON_B);
+  delay(1000);
 
-        // This function records a set of sensor readings and keeps
-        // track of the minimum and maximum values encountered.  The
-        // IR_EMITTERS_ON argument means that the IR LEDs will be
-        // turned on during the reading, which is usually what you
-        // want.
-        calibrate_line_sensors(IR_EMITTERS_ON);
+  // Auto-calibration: turn right and left while calibrating the
+  // sensors.
+  for (counter=0; counter<80; counter++)
+  {
+    if (counter < 20 || counter >= 60)
+      OrangutanMotors::setSpeeds(40, -40);
+    else
+      OrangutanMotors::setSpeeds(-40, 40);
 
-        // Since our counter runs to 80, the total delay will be
-        // 80*20 = 1600 ms.
-        delay(20);
-    }
-    set_motors(0,0);
+    // This function records a set of sensor readings and keeps
+    // track of the minimum and maximum values encountered.  The
+    // IR_EMITTERS_ON argument means that the IR LEDs will be
+    // turned on during the reading, which is usually what you
+    // want.
+    robot.calibrateLineSensors(IR_EMITTERS_ON);
 
-    // Display calibrated values as a bar graph.
-    while(!button_is_pressed(BUTTON_B))
-    {
-        // Read the sensor values and get the position measurement.
-        unsigned int position = read_line(sensors,IR_EMITTERS_ON);
+    // Since our counter runs to 80, the total delay will be
+    // 80*20 = 1600 ms.
+    delay(20);
+  }
+  OrangutanMotors::setSpeeds(0, 0);
 
-        // Display the position measurement, which will go from 0
-        // (when the leftmost sensor is over the line) to 4000 (when
-        // the rightmost sensor is over the line) on the 3pi, along
-        // with a bar graph of the sensor readings.  This allows you
-        // to make sure the robot is ready to go.
-        clear();
-        print_long(position);
-        lcd_goto_xy(0,1);
-        display_readings(sensors);
+  // Display calibrated values as a bar graph.
+  while (!OrangutanPushbuttons::isPressed(BUTTON_B))
+  {
+    // Read the sensor values and get the position measurement.
+    unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
 
-        delay(100);
-    }
-    wait_for_button_release(BUTTON_B);
+    // Display the position measurement, which will go from 0
+    // (when the leftmost sensor is over the line) to 4000 (when
+    // the rightmost sensor is over the line) on the 3pi, along
+    // with a bar graph of the sensor readings.  This allows you
+    // to make sure the robot is ready to go.
+    OrangutanLCD::clear();
+    OrangutanLCD::print(position);
+    OrangutanLCD::gotoXY(0, 1);
+    display_readings(sensors);
 
-    clear();
+    delay(100);
+  }
+  OrangutanPushbuttons::waitForRelease(BUTTON_B);
 
-    print("Go!");
+  OrangutanLCD::clear();
 
-    // Play music and wait for it to finish before we start driving.
-    play_from_program_space(go);
-    while(is_playing());
+  OrangutanLCD::print("Go!");    
+
+  // Play music and wait for it to finish before we start driving.
+  OrangutanBuzzer::playFromProgramSpace(go);
+  while(OrangutanBuzzer::isPlaying());
 }
 
-// This is the main function, where the code starts.  All C programs
-// must have a main() function defined somewhere.
-int main()
+// The main function.  This function is repeatedly called by
+// the Arduino framework.
+void loop()
 {
-    unsigned int sensors[5]; // an array to hold sensor values
+  // Get the position of the line.  Note that we *must* provide
+  // the "sensors" argument to read_line() here, even though we
+  // are not interested in the individual sensor readings.
+  unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+  if (position < 1000)
+  {
+    // We are far to the right of the line: turn left.
 
-    // set up the 3pi
-    initialize();
+    // Set the right motor to 100 and the left motor to zero,
+    // to do a sharp turn to the left.  Note that the maximum
+    // value of either motor speed is 255, so we are driving
+    // it at just about 40% of the max.
+    OrangutanMotors::setSpeeds(0, 100);
 
-    // This is the "main loop" - it will run forever.
-    while(1)
-    {
-        // Get the position of the line.  Note that we *must* provide
-        // the "sensors" argument to read_line() here, even though we
-        // are not interested in the individual sensor readings.
-        unsigned int position = read_line(sensors,IR_EMITTERS_ON);
-
-        if(position < 1000)
-        {
-            // We are far to the right of the line: turn left.
-
-            // Set the right motor to 100 and the left motor to zero,
-            // to do a sharp turn to the left.  Note that the maximum
-            // value of either motor speed is 255, so we are driving
-            // it at just about 40% of the max.
-            set_motors(0,100);
-
-            // Just for fun, indicate the direction we are turning on
-            // the LEDs.
-            left_led(1);
-            right_led(0);
-        }
-        else if(position < 3000)
-        {
-            // We are somewhat close to being centered on the line:
-            // drive straight.
-            set_motors(100,100);
-            left_led(1);
-            right_led(1);
-        }
-        else
-        {
-            // We are far to the left of the line: turn right.
-            set_motors(100,0);
-            left_led(0);
-            right_led(1);
-        }
-    }
-
-    // This part of the code is never reached.  A robot should
-    // never reach the end of its program, or unpredictable behavior
-    // will result as random code starts getting executed.  If you
-    // really want to stop all actions at some point, set your motors
-    // to 0,0 and run the following command to loop forever:
-    //
-    // while(1);
+    // Just for fun, indicate the direction we are turning on
+    // the LEDs.
+    OrangutanLEDs::left(HIGH);
+    OrangutanLEDs::right(LOW);
+  }
+  else if (position < 3000)
+  {
+    // We are somewhat close to being centered on the line:
+    // drive straight.
+    OrangutanMotors::setSpeeds(100, 100);
+    OrangutanLEDs::left(HIGH);
+    OrangutanLEDs::right(HIGH);
+  }
+  else
+  {
+    // We are far to the left of the line: turn right.
+    OrangutanMotors::setSpeeds(100, 0);
+    OrangutanLEDs::left(LOW);
+    OrangutanLEDs::right(HIGH);
+  }
 }
