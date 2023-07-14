@@ -218,7 +218,7 @@ void loop()
     // to do a sharp turn to the left.  Note that the maximum
     // value of either motor speed is 255, so we are driving
     // it at just about 40% of the max.
-    OrangutanMotors::setSpeeds(0, 100);
+    OrangutanMotors::setSpeeds(0, 200);
 
     // Just for fun, indicate the direction we are turning on
     // the LEDs.
@@ -229,14 +229,14 @@ void loop()
   {
     // We are somewhat close to being centered on the line:
     // drive straight.
-    OrangutanMotors::setSpeeds(100, 100);
+    OrangutanMotors::setSpeeds(200, 200);
     OrangutanLEDs::left(HIGH);
     OrangutanLEDs::right(HIGH);
   }
   else
   {
     // We are far to the left of the line: turn right.
-    OrangutanMotors::setSpeeds(100, 0);
+    OrangutanMotors::setSpeeds(200, 0);
     OrangutanLEDs::left(LOW);
     OrangutanLEDs::right(HIGH);
   }
