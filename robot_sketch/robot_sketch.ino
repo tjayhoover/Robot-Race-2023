@@ -31,6 +31,8 @@
 
 Pololu3pi robot;
 unsigned int sensors[5]; // an array to hold sensor values
+int last_proportional;
+int integral;
 
 // This include file allows data to be stored in program space.  The
 // ATmega168 has 16k of program space compared to 1k of RAM, so large
@@ -206,38 +208,73 @@ void setup()
 // the Arduino framework.
 void loop()
 {
-  // Get the position of the line.  Note that we *must* provide
-  // the "sensors" argument to read_line() here, even though we
-  // are not interested in the individual sensor readings.
-  unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
-  if (position < 1000)
-  {
-    // We are far to the right of the line: turn left.
+//  // Get the position of the line.  Note that we *must* provide
+//  // the "sensors" argument to read_line() here, even though we
+//  // are not interested in the individual sensor readings.
+//  unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+//  if (position < 1000)
+//  {
+//    // We are far to the right of the line: turn left.
+//
+//    // Set the right motor to 100 and the left motor to zero,
+//    // to do a sharp turn to the left.  Note that the maximum
+//    // value of either motor speed is 255, so we are driving
+//    // it at just about 40% of the max.
+//    OrangutanMotors::setSpeeds(0, 200);
+//
+//    // Just for fun, indicate the direction we are turning on
+//    // the LEDs.
+//    OrangutanLEDs::left(HIGH);
+//    OrangutanLEDs::right(LOW);
+//  }
+//  else if (position < 3000)
+//  {
+//    // We are somewhat close to being centered on the line:
+//    // drive straight.
+//    OrangutanMotors::setSpeeds(200, 200);
+//    OrangutanLEDs::left(HIGH);
+//    OrangutanLEDs::right(HIGH);
+//  }
+//  else
+//  {
+//    // We are far to the left of the line: turn right.
+//    OrangutanMotors::setSpeeds(200, 0);
+//    OrangutanLEDs::left(LOW);
+//    OrangutanLEDs::right(HIGH);
+//  }
 
-    // Set the right motor to 100 and the left motor to zero,
-    // to do a sharp turn to the left.  Note that the maximum
-    // value of either motor speed is 255, so we are driving
-    // it at just about 40% of the max.
-    OrangutanMotors::setSpeeds(0, 200);
+// Get the position of the line.  Note that we *must* provide
+// the "sensors" argument to read_line() here, even though we
+// are not interested in the individual sensor readings.
+unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
 
-    // Just for fun, indicate the direction we are turning on
-    // the LEDs.
-    OrangutanLEDs::left(HIGH);
-    OrangutanLEDs::right(LOW);
-  }
-  else if (position < 3000)
-  {
-    // We are somewhat close to being centered on the line:
-    // drive straight.
-    OrangutanMotors::setSpeeds(200, 200);
-    OrangutanLEDs::left(HIGH);
-    OrangutanLEDs::right(HIGH);
-  }
-  else
-  {
-    // We are far to the left of the line: turn right.
-    OrangutanMotors::setSpeeds(200, 0);
-    OrangutanLEDs::left(LOW);
-    OrangutanLEDs::right(HIGH);
-  }
+// The "proportional" term should be 0 when we are on the line.
+int proportional = ((int)position) - 2000;
+ 
+// Compute the derivative (change) and integral (sum) of the
+// position.
+int derivative = proportional - last_proportional;
+integral += proportional;
+ 
+// Remember the last position.
+last_proportional = proportional;
+// Compute the difference between the two motor power settings,
+// m1 - m2.  If this is a positive number the robot will turn
+// to the right.  If it is a negative number, the robot will
+// turn to the left, and the magnitude of the number determines
+// the sharpness of the turn.
+int power_difference = proportional/20 + integral/10000 + derivative*2;
+ 
+// Compute the actual motor settings.  We never set either motor
+// to a negative value.
+const int max = 30;
+if(power_difference > max)
+    power_difference = max;
+if(power_difference < -max)
+    power_difference = -max;
+ 
+if(power_difference < 0)
+    OrangutanMotors::setSpeeds(max+power_difference, max);
+else
+    OrangutanMotors::setSpeeds(max, max-power_difference);
 }
