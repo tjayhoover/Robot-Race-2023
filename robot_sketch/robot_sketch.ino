@@ -208,46 +208,11 @@ void setup()
 // the Arduino framework.
 void loop()
 {
-//  // Get the position of the line.  Note that we *must* provide
-//  // the "sensors" argument to read_line() here, even though we
-//  // are not interested in the individual sensor readings.
-//  unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
-//  if (position < 1000)
-//  {
-//    // We are far to the right of the line: turn left.
-//
-//    // Set the right motor to 100 and the left motor to zero,
-//    // to do a sharp turn to the left.  Note that the maximum
-//    // value of either motor speed is 255, so we are driving
-//    // it at just about 40% of the max.
-//    OrangutanMotors::setSpeeds(0, 200);
-//
-//    // Just for fun, indicate the direction we are turning on
-//    // the LEDs.
-//    OrangutanLEDs::left(HIGH);
-//    OrangutanLEDs::right(LOW);
-//  }
-//  else if (position < 3000)
-//  {
-//    // We are somewhat close to being centered on the line:
-//    // drive straight.
-//    OrangutanMotors::setSpeeds(200, 200);
-//    OrangutanLEDs::left(HIGH);
-//    OrangutanLEDs::right(HIGH);
-//  }
-//  else
-//  {
-//    // We are far to the left of the line: turn right.
-//    OrangutanMotors::setSpeeds(200, 0);
-//    OrangutanLEDs::left(LOW);
-//    OrangutanLEDs::right(HIGH);
-//  }
-
 // Get the position of the line.  Note that we *must* provide
 // the "sensors" argument to read_line() here, even though we
 // are not interested in the individual sensor readings.
 unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
-
+ 
 // The "proportional" term should be 0 when we are on the line.
 int proportional = ((int)position) - 2000;
  
@@ -263,11 +228,11 @@ last_proportional = proportional;
 // to the right.  If it is a negative number, the robot will
 // turn to the left, and the magnitude of the number determines
 // the sharpness of the turn.
-int power_difference = proportional/20 + integral/10000 + derivative*2;
+int power_difference = proportional/20 + integral/100000 + derivative*1/2;
  
 // Compute the actual motor settings.  We never set either motor
 // to a negative value.
-const int max = 30;
+const int max = 70;
 if(power_difference > max)
     power_difference = max;
 if(power_difference < -max)
