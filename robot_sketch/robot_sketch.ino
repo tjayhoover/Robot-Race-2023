@@ -107,6 +107,9 @@ void display_readings(const unsigned int *calibrated_values)
   }
 }
 
+// Holds all five sensor values
+int fiveSensors[5];
+
 // Initializes the 3pi, displays a welcome message, calibrates, and
 // plays the initial music.  This function is automatically called
 // by the Arduino framework at the start of program execution.
@@ -212,6 +215,10 @@ void loop()
 // the "sensors" argument to read_line() here, even though we
 // are not interested in the individual sensor readings.
 unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+
+robot.readLineSensors(fiveSensors, IR_EMITTERS_ON);
+
+
  
 // The "proportional" term should be 0 when we are on the line.
 int proportional = ((int)position) - 2000;
@@ -228,18 +235,22 @@ last_proportional = proportional;
 // to the right.  If it is a negative number, the robot will
 // turn to the left, and the magnitude of the number determines
 // the sharpness of the turn.
-int power_difference = proportional/20 + integral/100000 + derivative*1/2;
+int power_difference = proportional/15 + integral/10000 + derivative*3/2;
  
 // Compute the actual motor settings.  We never set either motor
 // to a negative value.
-const int max = 70;
+int max_mod = abs(integral/10000);
+if (max_mod > 10) max_mod = 10;
+else if (max_mod < 10) max_mod = -10;
+
+const int max = 40 - max_mod;
 if(power_difference > max)
     power_difference = max;
 if(power_difference < -max)
     power_difference = -max;
  
 if(power_difference < 0)
-    OrangutanMotors::setSpeeds(max+power_difference, max);
+    OrangutanMotors::setSpeeds(max+(1.75*power_difference), max);
 else
-    OrangutanMotors::setSpeeds(max, max-power_difference);
+    OrangutanMotors::setSpeeds(max, max-(1.75*power_difference));
 }
