@@ -218,11 +218,10 @@ unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
 
 robot.readLineSensors(fiveSensors, IR_EMITTERS_ON);
 
-unsigned int position_custom = (fiveSensors[0] * 0 + fiveSensors[1] * 1000 + fiveSensors[2] * 2000 + fiveSensors[3] * 3000 + fiveSensors[4] * 4000) / (fiveSensors[0] + fiveSensors[1] + fiveSensors[2] + fiveSensors[3] + fiveSensors[4]);
 
+ 
 // The "proportional" term should be 0 when we are on the line.
-//int proportional = ((int)position) - 2000;
-int proportional = ((int)position_custom) - 2000;
+int proportional = ((int)position) - 2000;
  
 // Compute the derivative (change) and integral (sum) of the
 // position.
@@ -240,17 +239,11 @@ int power_difference = proportional/15 + integral/10000 + derivative*3/2;
  
 // Compute the actual motor settings.  We never set either motor
 // to a negative value.
-
-//const int max_param = 80;
-
 int max_mod = abs(integral/10000);
-//int max_mod_ceiling = max_param/4;
-//int max_ceiling = max_param/4;
-int max_ceiling = 10;
-if (max_mod > max_ceiling) max_mod = max_ceiling;
-else if (max_mod < max_ceiling) max_mod = -max_ceiling;
+if (max_mod > 10) max_mod = 10;
+else if (max_mod < 10) max_mod = -10;
 
-const int max = 80 - max_mod;
+const int max = 40 - max_mod;
 if(power_difference > max)
     power_difference = max;
 if(power_difference < -max)
