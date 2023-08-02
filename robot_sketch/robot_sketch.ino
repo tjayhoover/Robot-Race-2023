@@ -28,16 +28,22 @@
 #include <OrangutanLCD.h>
 #include <OrangutanPushbuttons.h>
 #include <OrangutanBuzzer.h>
+#include <avr/pgmspace.h>
 
 Pololu3pi robot;
 unsigned int sensors[5]; // an array to hold sensor values
 int last_proportional;
-int integral;
 
-// This include file allows data to be stored in program space.  The
-// ATmega168 has 16k of program space compared to 1k of RAM, so large
-// pieces of static data should be stored in program space.
-#include <avr/pgmspace.h>
+// I added this - Tyler
+int last_position;
+int sensor_count = 5;
+int modded_sensor_count = 3;
+
+int integral;
+// Other array for our sensors
+unsigned int n_sensors[5];
+
+
 
 // Introductory messages.  The "PROGMEM" identifier causes the data to
 // go into program space.
@@ -70,6 +76,67 @@ const char levels[] PROGMEM = {
   0b11111,
   0b11111
 };
+
+unsigned int get_custom_line() {
+  bool onLine = false;
+  uint32_t avg = 0; // this is for the weighted total
+  uint16_t sum = 0; // this is for the denominator, which is <= 64000
+
+  robot.readLine(n_sensors, IR_EMITTERS_ON);
+
+  //avg = (n_sensors[0] * 0) + (n_sensors[1] * 1000) + (n_sensors[2] * 2000) + (n_sensors[3] * 3000) + (n_sensors[4] * 4000);
+  //sum = (n_sensors[0] + n_sensors[1] + n_sensors[2] + n_sensors[3] + n_sensors[4]);
+
+
+  if (n_sensors[0] > n_sensors[1] && n_sensors[2] > n_sensors[1]) {
+    n_sensors[0] = 0;
+  }
+
+  if (n_sensors[4] > n_sensors[3] && n_sensors[2] > n_sensors[3]) {
+    n_sensors[4] = 0;
+  }
+
+  for (uint8_t i = 0; i < sensor_count; i++)
+  {
+    uint16_t value = n_sensors[i];
+
+    // keep track of whether we see the line at all
+    if (value > 200) { onLine = true; }
+
+    // only average in values that are above a noise threshold
+    if (value > 50)
+    {
+      avg += (uint32_t)value * (i * 1000);
+      sum += value;
+    }
+  }
+
+  if (!onLine)
+  {
+    // If it last read to the left of center, return 0.
+    if (last_position < (sensor_count - 1) * 1000 / 2)
+    {
+      return 0;
+    }
+    // If it last read to the right of center, return the max.
+    else
+    {
+      return (sensor_count - 1) * 1000;
+    }
+  }
+  last_position = avg/sum;
+  return last_position;
+}
+
+//unsigned int get_custom_line() {
+//  robot.readCalibrated(n_sensors, IR_EMITTERS_ON);
+//  uint32_t avg = 0;
+//  for(int i = 0; i < 5; ++i) {
+//    avg += ((i * 1000)*n_sensors[i]);
+//    sum += (i * 1000);
+//  }
+//  return ((n_sensors[0] * 0) + (n_sensors[1] * 1000) + (n_sensors[2] * 2000) + (n_sensors[3] * 3000) + (n_sensors[4] * 4000)) / (n_sensors[0] + n_sensors[1] + n_sensors[2] + n_sensors[3] + n_sensors[4]);
+//}
 
 // This function loads custom characters into the LCD.  Up to 8
 // characters can be loaded; we use them for 7 levels of a bar graph.
@@ -106,9 +173,6 @@ void display_readings(const unsigned int *calibrated_values)
     OrangutanLCD::print(c);
   }
 }
-
-// Holds all five sensor values
-int fiveSensors[5];
 
 // Initializes the 3pi, displays a welcome message, calibrates, and
 // plays the initial music.  This function is automatically called
@@ -182,7 +246,8 @@ void setup()
   while (!OrangutanPushbuttons::isPressed(BUTTON_B))
   {
     // Read the sensor values and get the position measurement.
-    unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+    //unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+    unsigned int position = get_custom_line();
 
     // Display the position measurement, which will go from 0
     // (when the leftmost sensor is over the line) to 4000 (when
@@ -214,15 +279,12 @@ void loop()
 // Get the position of the line.  Note that we *must* provide
 // the "sensors" argument to read_line() here, even though we
 // are not interested in the individual sensor readings.
-unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+//unsigned int position = robot.readLine(sensors, IR_EMITTERS_ON);
+unsigned int position = get_custom_line();
 
-robot.readLineSensors(fiveSensors, IR_EMITTERS_ON);
-
-unsigned int position_custom = (fiveSensors[0] * 0 + fiveSensors[1] * 1000 + fiveSensors[2] * 2000 + fiveSensors[3] * 3000 + fiveSensors[4] * 4000) / (fiveSensors[0] + fiveSensors[1] + fiveSensors[2] + fiveSensors[3] + fiveSensors[4]);
 
 // The "proportional" term should be 0 when we are on the line.
-//int proportional = ((int)position) - 2000;
-int proportional = ((int)position_custom) - 2000;
+int proportional = ((int)position) - 2000;
  
 // Compute the derivative (change) and integral (sum) of the
 // position.
@@ -236,24 +298,28 @@ last_proportional = proportional;
 // to the right.  If it is a negative number, the robot will
 // turn to the left, and the magnitude of the number determines
 // the sharpness of the turn.
-int power_difference = proportional/15 + integral/10000 + derivative*3/2;
+int power_difference = proportional/25 + integral/10000 + derivative*5/3;
  
 // Compute the actual motor settings.  We never set either motor
 // to a negative value.
 
-const int max_param = 80;
+OrangutanLCD::clear();
+OrangutanLCD::print(position);
+
+const int max_param = 50;
 
 int max_mod = abs(integral/10000);
-//int max_mod_ceiling = max_param/4;
-int max_ceiling = max_param/4;
+int max_ceiling = max_param/2;
 if (max_mod > max_ceiling) max_mod = max_ceiling;
-else if (max_mod < max_ceiling) max_mod = -max_ceiling;
+else if (max_mod < 0) max_mod = 0;
 
-const int max = 80 - max_mod;
+const int max = max_param - max_mod;
 if(power_difference > max)
     power_difference = max;
 if(power_difference < -max)
     power_difference = -max;
+
+if (abs(power_difference) < 5) power_difference = 0;
  
 if(power_difference < 0)
     OrangutanMotors::setSpeeds(max+(1.75*power_difference), max);
