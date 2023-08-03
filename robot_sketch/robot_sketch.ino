@@ -298,7 +298,7 @@ last_proportional = proportional;
 // to the right.  If it is a negative number, the robot will
 // turn to the left, and the magnitude of the number determines
 // the sharpness of the turn.
-int power_difference = proportional/25 + integral/10000 + derivative*5/3;
+int power_difference = proportional/15 + integral/10000 + derivative*3/2;
  
 // Compute the actual motor settings.  We never set either motor
 // to a negative value.
@@ -306,9 +306,9 @@ int power_difference = proportional/25 + integral/10000 + derivative*5/3;
 OrangutanLCD::clear();
 OrangutanLCD::print(position);
 
-const int max_param = 50;
+const int max_param = 80;
 
-int max_mod = abs(integral/10000);
+int max_mod = abs(proportional/20);
 int max_ceiling = max_param/2;
 if (max_mod > max_ceiling) max_mod = max_ceiling;
 else if (max_mod < 0) max_mod = 0;
@@ -319,10 +319,12 @@ if(power_difference > max)
 if(power_difference < -max)
     power_difference = -max;
 
-if (abs(power_difference) < 5) power_difference = 0;
+if (abs(power_difference) < 10) power_difference = 0;
  
 if(power_difference < 0)
+    // Turn left
     OrangutanMotors::setSpeeds(max+(1.75*power_difference), max);
 else
+  // Turn right
     OrangutanMotors::setSpeeds(max, max-(1.75*power_difference));
 }
